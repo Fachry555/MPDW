@@ -1,0 +1,24 @@
+```{r}
+install.packages(c("forecast", "graphics", "TTR", "TSA", "aTSA", "lmtest", "MLmetrics",
+"car", "dplyr", "MASS", "tsibble", "tseries", "ggplot2", "nortest" ))
+```
+```{r}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+library("aTSA")
+library("lmtest")
+library("MLmetrics")
+library("car")
+library("dplyr")
+library("MASS")
+library("tsibble")
+library("tseries")
+library("ggplot2")
+library("nortest")
+```
+
+
+=======
+```{r}
