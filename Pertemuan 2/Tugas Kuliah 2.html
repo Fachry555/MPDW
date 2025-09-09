@@ -1,0 +1,122 @@
+# LIBRARY 
+```{r}
+library(readxl)
+library(dplyr)
+library(forecast)
+library(gridExtra)
+library(ggplot2)
+library(lmtest)
+```
+
+```{r}
+data <- read_excel("C:/Users/LENOVO/Downloads/IPM_Kota_Sorong_2010_2024.xlsx")
+data
+model <- lm(IPM ~ Tahun, data = data)
+summary(model)
+resid <- residuals(model)
+fitted <- fitted.values(model)
+```
+Berdasarkan uji Durbin-watson didapatkan DW = 0.68 dan p-value = 0.00029 < 0.05 karenanya dapat disimpulkan bahwa terdapat 
+autokorelasi positif ada data IPM Kota Sorong
+
+#SISAAN BEBAS
+```{r}
+resid <- residuals(model)
+fitted <- fitted.values(model)
+p1 <- ggplot(data.frame(resid), aes(sample = resid)) +
+  stat_qq(color = "red") +
+  stat_qq_line(color = "blue") +
+  labs(title = "Normal Probability Plot of the Residuals", 
+       x = "Theoretical Quantiles", y = "Sample Quantiles")
+
+p2 <- ggplot(data.frame(fitted, resid), aes(x = fitted, y = resid)) +
+  geom_point(color = "red") +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted Value", y = "Residual", 
+       title = "Residuals Versus the Fitted Values")
+
+p3 <- ggplot(data.frame(resid), aes(x = resid)) +
+  geom_histogram(binwidth = 0.5, fill = "gray", color = "black") +
+  labs(x = "Residual", y = "Frequency", 
+       title = "Histogram of the Residuals")
+
+p4 <- ggplot(data.frame(Order = 1:length(resid), resid), aes(x = Order, y = resid)) +
+  geom_point(color = "blue") +
+  geom_line(color = "blue") +
+  labs(x = "Observation Order", y = "Residual", 
+       title = "Residuals Versus the Order of the Data")
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+Berdasarkan plot residual terhadap urutan observasi, terlihat adanya pola naik-turun yang cukup teratur sehingga menunjukkan indikasi adanya autokorelasi. Hal ini berarti residual tidak sepenuhnya acak, melainkan masih dipengaruhi oleh urutan waktu (tahun), sehingga model regresi antara tahun dan IPM Kota Sorong masih memiliki autokorelasi
+
+# Autokorelasi
+
+H0: tidak ada autokorelasi
+H1: ada autokorelasi
+
+```{r}
+dwtest(model)
+```
+Berdasarkan uji Durbin-watson didapatkan DW = 0.68 dan p-value = 0.00029 < 0.05 karenanya dapat disimpulkan bahwa terdapat 
+autokorelasi positif ada data IPM Kota Sorong, sehingga perlu penanganan
+
+## Metode Hildreth Lu
+```{r}
+hildreth.lu.func<- function(r, model){
+  x <- model.matrix(model)[,-1]
+  y <- model.response(model.frame(model))
+  n <- length(y)
+  t <- 2:n
+  y <- y[t]-r*y[t-1]
+  x <- x[t]-r*x[t-1]
+  
+  return(lm(y~x))
+}
+```
+
+```{r}
+r <- c(seq(0.1,0.9, by= 0.1))
+tab <- data.frame("rho" = r, "SSE" = sapply(r, function(i){deviance(hildreth.lu.func(i, model))}))
+round(tab, 4)
+```
+
+```{r}
+r <- c(seq(0.3,0.5, by= 0.01))
+tab <- data.frame("rho" = r, "SSE" = sapply(r, function(i){deviance(hildreth.lu.func(i, model))}))
+round(tab, 4)
+```
+
+```{r}
+r <- c(seq(0.41,0.42, by= 0.001))
+tab <- data.frame("rho" = r, "SSE" = sapply(r, function(i){deviance(hildreth.lu.func(i, model))}))
+round(tab, 4)
+```
+
+$\rho$ dengan SSE terkecil didapatkan 0.41
+
+```{r}
+modelHL <- hildreth.lu.func(0.41, model)
+summary(modelHL)
+```
+
+```{r}
+cat("y = ", coef(modelHL)[1]/(1-0.341), "+", coef(modelHL)[2],"x", sep = "")
+```
+Setelah ditransformasi didapatkan persamaan regresi y= -892.6337 + 0.3292x
+```{r}
+dwtest(modelHL)
+```
+
+Hasil uji Durbin-Watson juga menunjukkan bawah nilai DW sebesar $1.723$ berada pada selang daerah inkonklusif, yaitu pada rentang DL \< DW \< DU atau $1.446 < DW < 2.554$. Namun, berdasarkan *p-value* > 0.05 menunjukkan bahwa tidak ada autokorelasi. Oleh karena itu, metode Hildreth Lu cukup untuk menangani autokorelasi pada model ini.
+
+# SIMPULAN
+Autokorelasi merupakan salah satu masalah umum dalam analisis regresi yang sering muncul pada data deret waktu, termasuk data Indeks Pembangunan Manusia (IPM). Kondisi ini biasanya terjadi karena adanya hubungan erat antar variabel penyusun IPM, terutama indikator ekonomi seperti pendapatan per kapita. Apabila tidak ditangani, autokorelasi dapat menyebabkan taksiran parameter regresi menjadi tidak efisien, menghasilkan standar error yang bias, serta menurunkan validitas pengujian hipotesis.
+
+Deteksi autokorelasi dapat dilakukan dengan dua pendekatan. Pertama, melalui analisis visual seperti pemeriksaan pola pada plot sisaan, serta perhitungan Autocorrelation Function (ACF) dan Partial Autocorrelation Function (PACF). Kedua, melalui pengujian statistik formal, misalnya uji Durbin-Watson yang umum digunakan untuk mengidentifikasi autokorelasi orde pertama.
+
+Dalam upaya penanganan autokorelasi, beberapa metode koreksi yang sering diterapkan antara lain Hildreth-Lu, Cochrane-Orcutt, dan Prais-Winsten. Metode Hildreth-Lu cenderung lebih sederhana namun terbatas dalam aplikasinya, sedangkan Cochrane-Orcutt mampu memperbaiki autokorelasi tetapi memerlukan iterasi. Adapun metode Prais-Winsten, meskipun pada kasus tertentu menghasilkan nilai Sum of Squared Errors (SSE) yang lebih tinggi, tetap dinilai efektif karena dapat mengestimasi model dengan lebih baik tanpa mengabaikan observasi pertama, sehingga menjaga efisiensi data.
+
+
+
+
