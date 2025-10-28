@@ -1,0 +1,128 @@
+---
+title: "Tugas Lima"
+author: "Fachry Wirayuda Alindri"
+date: "2025-10-28"
+output: html_document
+---
+
+# Import Library & Data
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+library(readxl)
+library(lattice)
+```
+```{r}
+data <- read_excel("C:/Users/LENOVO/Downloads/Fachry (1).xlsx")
+data
+```
+
+```{r}
+data$Harga <- as.numeric(gsub(",", "", data$Harga))
+```
+
+# Plot Time-Series
+
+```{r}
+data$Tanggal <- as.Date(data$Tanggal, format = "%b %d, %Y")
+```
+
+```{r}
+plot(data$Tanggal, data$Harga, type = "l",
+     xlab = "Tanggal", ylab = "Harga",
+     col = "blue", lwd = 2)
+```
+```{r}
+mean(data$Harga)
+```
+```{r}
+densityplot(~ Harga, data = data,
+            xlab = "Harga",
+            main = "Density Plot Harga")
+```
+
+# Split Data
+
+```{r}
+n <- nrow(data)
+train_size <- floor(0.8 * n)
+
+train_data <- data[1:train_size, ]
+test_data  <- data[(train_size+1):n, ]
+```
+
+```{r}
+train_data
+```
+# ACF
+
+```{r}
+acf(train_data$Harga)
+```
+Pola ACF turun berlahan, hal ini menunjukkan kalau data train kita belum stasioner.
+
+```{r}
+tseries::adf.test(train_data$Harga)
+```
+
+Berdasarkan ADF test tersebut, nilai p value > 0.05. artinya kita gagal menolak hal nol, data train kita belum stasioner dalam rataan.
+
+# Plot Box-cox
+
+```{r}
+stas <- train_data$Harga  
+
+# index untuk panjang data
+index <- seq_along(stas)
+
+# buat model linear sederhana
+lm_model <- lm(stas ~ index)
+
+# Box-Cox
+bc <- boxcox(
+  lm_model,
+  lambda = seq(-1, 4, by = 0.01)
+)
+
+# Nilai lambda optimum
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+Karena dalam selang kepercayaan terdapat lamda = 1, artinya model kita stasioner dalam ragam.
+
+# Differencing 
+
+```{r}
+# Differencing orde 1 pada stas (kolom Harga)
+stas_diff1 <- diff(stas, differences = 1)
+
+# Plot hasil differencing
+ts.plot(stas_diff1,
+        main = "First-order Differencing dari Harga",
+        col = "blue", lwd = 2,
+        ylab = "ΔHarga")
+```
+```{r}
+acf(stas_diff1)
+```
+
+```{r}
+adf.test(stas_diff1)
+```
+Dari plot ACF yang cut off di lag 1 dan hasil uji ADF yang tolak H0, maka data train kita telah stasioner dalam rataan.
+
+
+
+
