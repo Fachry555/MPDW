@@ -1,0 +1,106 @@
+# Install & panggil package yang dibutuhkan
+install.packages(c("readxl", "forecast", "tseries", "ggplot2", "zoo"))
+library(readxl)
+library(forecast)
+library(tseries)
+library(ggplot2)
+library(zoo)
+
+# Baca data
+data <- read_excel("saham_lq45.xlsx")
+
+# Ubah ke format time series (asumsi data harian trading)
+data_ts <- ts(data$harga, frequency = 5)  # 5 = minggu kerja
+
+# Plot harga saham
+autoplot(data_ts) + 
+  ggtitle("Pergerakan Harga Saham LQ45") + 
+  xlab("Waktu") + ylab("Harga")
+  
+# Statistik deskriptif
+summary(data$harga)
+
+# Return harian
+data$return <- c(NA, diff(data$harga) / head(data$harga, -1))
+
+# Plot return
+autoplot(data$return) + 
+  ggtitle("Return Harian Saham LQ45") +
+  xlab("Waktu") + ylab("Return")
+
+# Volatilitas (Rolling Std Dev)
+roll_vol <- rollapply(data$return, width = 10, FUN = sd, fill = NA)
+autoplot(roll_vol) + 
+  ggtitle("Volatilitas 10 Hari (Rolling SD)") +
+  xlab("Waktu") + ylab("Standar Deviasi")
+
+# Uji Augmented Dickey-Fuller
+adf.test(data_ts)
+
+# Jika tidak stasioner, lakukan differencing
+diff_ts <- diff(data_ts)
+adf.test(diff_ts)
+
+# Plot data hasil differencing
+autoplot(diff_ts) + 
+  ggtitle("Data Setelah Differencing") + 
+  xlab("Waktu") + ylab("ΔHarga")
+
+# Identifikasi Pola ACF dan PACF
+par(mfrow = c(1,2))
+acf(diff_ts, main = "ACF - Autocorrelation")
+pacf(diff_ts, main = "PACF - Partial Autocorrelation")
+par(mfrow = c(1,1))
+
+# Model AR
+model_ar <- arima(diff_ts, order = c(1,0,0))
+summary(model_ar)
+
+# Model MA
+model_ma <- arima(diff_ts, order = c(0,0,1))
+summary(model_ma)
+
+# Model ARMA (Kombinasi AR dan Ma)
+model_arma <- arima(diff_ts, order = c(1,0,1))
+summary(model_arma)
+
+# MODEL ARIMA (untuk data non stasioner)
+model_arima <- arima(data_ts, order = c(1,1,1))
+summary(model_arima)
+
+# MODEL SARIMA (Jika ada data musiman)
+model_sarima <- Arima(data_ts, order = c(1,1,1), 
+                      seasonal = list(order = c(1,0,1), period = 5))
+summary(model_sarima)
+
+# MODEL ETS
+model_ets <- ets(data_ts)
+summary(model_ets)
+
+# Diagnostik Model
+# Cek residual
+tsdiag(model_arima)
+Box.test(model_arima$residuals, lag = 20, type = "Ljung-Box")
+
+# Bandingkan AIC antar model
+AIC(model_ar, model_ma, model_arma, model_arima, model_sarima, model_ets)
+
+#Forcasting
+# Menggunakan model terbaik (misal auto.arima)
+model_auto <- auto.arima(data_ts)
+summary(model_auto)
+
+# Prediksi 10 hari ke depan
+forecast_auto <- forecast(model_auto, h = 10)
+autoplot(forecast_auto) + 
+  ggtitle("Peramalan Harga Saham LQ45 (10 Hari ke Depan)") +
+  xlab("Waktu") + ylab("Harga")
+
+# Bandingkan hasil forecast antar model
+forecast_ets <- forecast(model_ets, h = 10)
+autoplot(forecast_ets) + ggtitle("Forecast dengan Model ETS")
+
+# Evaluasi akurasi
+accuracy(model_auto)
+accuracy(model_ets)
+
