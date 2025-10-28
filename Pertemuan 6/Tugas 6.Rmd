@@ -1,0 +1,312 @@
+---
+title: "Tugas Praktikum 6"
+author: "Fachry Wirayuda Alindri"
+date: "2025-10-28"
+output: html_document
+---
+# Library & Data
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+library(readxl)
+library(lattice)
+library(aTSA)
+library(TTR)
+library(forecast)
+library(TSA)
+library(dplyr)
+```
+```{r}
+data <- read_excel("C:/Users/LENOVO/Downloads/Fachry (1).xlsx")
+data
+```
+
+```{r}
+data$Harga <- as.numeric(gsub(",", "", data$Harga))
+```
+
+# Plot Time-Series
+
+```{r}
+data <- data %>%
+  mutate(Tanggal = as.Date(Tanggal, format = "%b %d, %Y")) %>%
+  arrange(Tanggal)
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+mean(data$Harga)
+```
+```{r}
+densityplot(~ Harga, data = data,
+            xlab = "Harga",
+            main = "Density Plot Harga")
+```
+Grafik density plot menunjukkan sebaran harga saham yang bersifat bimodal, dengan dua puncak utama di kisaran Rp 10.500–11.000 dan sekitar Rp 12.000. Hal ini mengindikasikan bahwa selama periode pengamatan, harga saham PT Indofood cenderung sering berada di dua rentang tersebut. Sebaran yang cukup lebar menggambarkan adanya fluktuasi harga yang relatif tinggi, sementara area dengan kepadatan rendah di antara kedua puncak menandakan adanya pergeseran level harga pada waktu tertentu.
+
+# Split Data
+
+## Splitting
+
+```{r}
+length(data$Harga)
+```
+
+```{r}
+train_data <- data[1:80, ]
+test_data  <- data[81:nrow(data), ]
+```
+
+```{r}
+train_data
+```
+## Plot Data
+
+```{r}
+plot(data$Tanggal, data$Harga, type = "l",
+     xlab = "Tanggal", ylab = "Harga",
+     col = "blue", lwd = 2)
+```
+
+## Plot Data Training
+
+```{r}
+plot(train_data$Tanggal, train_data$Harga, type = "l",
+     xlab = "Tanggal", ylab = "Harga",
+     col = "blue", lwd = 2)
+```
+## Plot Data Testing
+
+```{r}
+plot(test_data$Tanggal, test_data$Harga, type = "l",
+     xlab = "Tanggal", ylab = "Harga",
+     col = "blue", lwd = 2)
+```
+
+# ACF
+
+```{r}
+acf(train_data$Harga)
+```
+Plot ACF menunjukkan bahwa data harga saham memiliki autokorelasi yang tinggi pada beberapa lag awal, dengan pola penurunan yang lambat. Hal ini menandakan bahwa nilai harga pada waktu tertentu sangat dipengaruhi oleh harga pada periode sebelumnya (adanya efek memori). Pola seperti ini mengindikasikan bahwa data belum bersifat stasioner dan kemungkinan memerlukan proses differencing sebelum dilakukan pemodelan ARIMA
+
+```{r}
+tseries::adf.test(train_data$Harga)
+```
+
+Berdasarkan ADF test tersebut, nilai p value > 0.05. artinya kita gagal menolak hal nol, data train kita belum stasioner dalam rataan.
+
+# Plot Box-cox
+
+```{r}
+stas <- train_data$Harga  
+
+index <- seq_along(stas)
+
+lm_model <- lm(stas ~ index)
+
+bc <- boxcox(
+  lm_model,
+  lambda = seq(-1, 4, by = 0.01)
+)
+
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+Karena dalam selang kepercayaan -1 < lamda < 1.88 terdapat lamda = 1, artinya model kita stasioner dalam ragam.
+
+# Differencing 
+
+```{r}
+stas_diff1 <- diff(stas, differences = 1)
+
+ts.plot(stas_diff1,
+        main = "First-order Differencing dari Harga",
+        col = "blue", lwd = 2,
+        ylab = "ΔHarga")
+```
+```{r}
+acf(stas_diff1)
+```
+
+```{r}
+tseries::adf.test(stas_diff1)
+```
+Dari plot ACF yang cut off di lag 1 dan hasil uji ADF yang tolak H0, maka data train kita telah stasioner dalam rataan.
+
+# Identifikasi Model
+
+## ACF
+
+```{r}
+acf(stas_diff1)
+```
+## PACF
+
+```{r}
+pacf(stas_diff1)
+```
+## EACF
+
+```{r}
+eacf(stas_diff1)
+```
+dari ACF, PACF, dan EACF didapatkan beberapa model tentatif :
+1. ARIMA(0,1,1)
+2. ARIMA(1,1,0)
+3. ARIMA(1,1,1)
+
+# Pendugaan Parameter Model Tentatif
+
+```{r}
+train_ts <- ts(train_data$Harga)
+```
+
+
+## ARIMA(0,1,1)
+
+```{r}
+model1.da=Arima(train_ts, order=c(0,1,1),method="ML")
+summary(model1.da) 
+```
+
+```{r}
+lmtest::coeftest(model1.da)
+```
+model dengan ma(1) tidak signifikan.
+
+## ARIMA(1,1,0)
+
+```{r}
+model2.da=Arima(train_ts, order=c(1,1,0),method="ML")
+summary(model2.da)
+```
+
+```{r}
+lmtest::coeftest(model2.da)
+```
+model dengan AR(1) tidak signifikan
+
+## ARIMA(1,1,1)
+
+```{r}
+model3.da=Arima(train_ts, order=c(1,1,1),method="ML")
+summary(model3.da)
+```
+```{r}
+lmtest::coeftest(model3.da)
+```
+
+AR(1) dan MA(1) signifikan
+
+## Perbandingan Model
+
+```{r}
+aic.arima<-data.frame(
+  "Model"=c("ARIMA(0,1,1)", "ARIMA(1,1,0)", "ARIMA(1,1,1)"),
+  "AIC"=c(model1.da$aic, model2.da$aic, model3.da$aic))
+
+aic.arima
+```
+Model ARIMA(0,1,1) memiliki nilai AIC ter-rendah.
+
+# Diagnostik Model
+
+## Uji non-Formal
+
+```{r}
+arima.111y<-Arima(train_ts,   order=c(1,1,1), include.mean = TRUE,method="ML") 
+sisaan111 <- arima.111y$residuals
+
+# Eksplorasi
+par(mfrow=c(2,2))
+qqnorm(sisaan111)
+plot(c(1:length(sisaan111)),sisaan111)
+acf(sisaan111)
+pacf(sisaan111)
+```
+## Uji Non-Autokorelasi
+
+```{r}
+Box.test(sisaan111, lag = 23 ,type = "Ljung")
+```
+Asumsi Non-Autokorelasi terpenuhi, hal ini dapat dilihat dari nilai p-value>0.05.
+
+## Uji Normalitas
+
+```{r}
+ks.test(sisaan111,"pnorm")
+```
+P-value<0.05, artinya kita menolak h0. hal ini menunjukkan pelanggaran asumsi normalitas residual.
+
+## Uji Nilai Tengah Sisaan
+
+```{r}
+t.test(sisaan111, mu = 0, alternative = "two.sided")
+```
+Asumsi nilai harapan residual=0 terpenuhi.
+
+# Overfitting Model
+
+Overfitting model dilakukan pada model :
+1. ARIMA(2,1,1)
+2. ARIMA(1,1,2)
+
+```{r}
+arima.211<-arima(train_ts, order=c(2,1,1), include.mean = TRUE,method="ML") #ARIMA (2,1,1)
+
+lmtest::coeftest(arima.211)
+```
+AR(2) tidak signifikan
+
+```{r}
+arima.112<-arima(train_ts, order=c(1,1,2), include.mean = TRUE,method="ML") #ARIMA (1,1,2)
+
+lmtest::coeftest(arima.112)
+```
+
+# Ukuran keakuratan ramalan Model ARIMA (1,1,1)
+
+```{r}
+length(fitted(arima.111y))
+nrow(train_data)
+```
+
+
+```{r}
+dugaan <- fitted(arima.111y)
+cbind(train_data,dugaan)
+```
+
+```{r}
+plot.ts(train_data$Harga, xlab="Month", ylab="Data")
+par(col="red")
+```
+```{r}
+mape_train <- mean(abs((train_data$Harga - dugaan) / train_data$Harga)) * 100
+mape_train
+```
+Nilai MAPE pada train kurang baik
+
+```{r}
+par(col="black")
+```
+
+```{r}
+n_test <- nrow(test_data)
+n_test
+```
+
